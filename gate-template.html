@@ -1,0 +1,96 @@
+<title>Agent Goal Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root { --g-bg: #F3F5F1; --g-surface: #FFFFFF; --g-ink: #15211E; --g-muted: #5B6A65; --g-line: #DCE2DD; --g-accent: #0F6E5D; --g-on-accent: #FFFFFF; --g-bad: #B3402E; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --g-bg: #0F1614; --g-surface: #17211E; --g-ink: #E7EEEA; --g-muted: #97A69F; --g-line: #2A3732; --g-accent: #4FC2A6; --g-on-accent: #0F1614; --g-bad: #F08070; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --g-bg: #0F1614; --g-surface: #17211E; --g-ink: #E7EEEA; --g-muted: #97A69F; --g-line: #2A3732; --g-accent: #4FC2A6; --g-on-accent: #0F1614; --g-bad: #F08070; color-scheme: dark; }
+body { background: var(--g-bg); color: var(--g-ink); }
+.gate { min-height: 100vh; display: grid; place-items: center; padding-block: 32px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; box-sizing: border-box; }
+.gate * { box-sizing: border-box; }
+.gate-box { width: 100%; max-width: 420px; background: var(--g-surface); border: 1px solid var(--g-line); border-radius: 14px; padding: 26px 24px; display: grid; gap: 18px; }
+.gate-logos { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.gate-logos .pn { height: 44px; width: auto; background: #FFFFFF; border-radius: 8px; padding: 5px 9px; }
+.gate-logos .tr { height: 64px; width: 64px; border-radius: 10px; }
+.gate h1 { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; font-size: 28px; line-height: 1.1; margin: 0 0 6px; }
+.gate p { margin: 0; color: var(--g-muted); font-size: 15px; }
+.gate form { display: grid; gap: 10px; }
+.gate label { font-weight: 600; font-size: 14px; }
+.gate .row { display: flex; gap: 8px; }
+.gate input { flex: 1; min-width: 0; font: inherit; font-size: 16px; color: var(--g-ink); background: var(--g-bg); border: 1px solid var(--g-line); border-radius: 8px; height: 46px; padding: 0 12px; }
+.gate .show { font: 600 14px "IBM Plex Sans", system-ui, sans-serif; border: 1px solid var(--g-line); background: var(--g-surface); color: var(--g-ink); border-radius: 8px; padding: 0 14px; cursor: pointer; }
+.gate .go { font: 600 16px "IBM Plex Sans", system-ui, sans-serif; height: 46px; border: 0; border-radius: 8px; background: var(--g-accent); color: var(--g-on-accent); cursor: pointer; }
+.gate .go:disabled { opacity: .6; cursor: wait; }
+.gate input:focus-visible, .gate button:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
+.gate .err { color: var(--g-bad); font-weight: 600; font-size: 14px; }
+</style>
+
+<main class="gate" id="gate">
+  <div class="gate-box">
+    <div class="gate-logos">
+      <img class="pn" src="__PROPNEX__" alt="PropNex">
+      <img class="tr" src="__TRMC__" alt="T.R.M.C Real Estate">
+    </div>
+    <div>
+      <h1>Goal Planner</h1>
+      <p>For T.R.M.C agents. Enter the access password to continue.</p>
+    </div>
+    <form id="gateForm">
+      <label for="gatePw">Password</label>
+      <div class="row">
+        <input type="password" id="gatePw" autocomplete="current-password" required>
+        <button type="button" class="show" id="gateShow">Show</button>
+      </div>
+      <button class="go" id="gateGo" type="submit">Unlock</button>
+      <p class="err" id="gateErr" role="alert" hidden>That password is incorrect. Check with your team leader and try again.</p>
+    </form>
+  </div>
+</main>
+<div id="app"></div>
+
+<script>
+(function () {
+  // The app is AES-GCM encrypted with a key derived from the password (PBKDF2-SHA256).
+  // The password is asked for on every visit and never stored.
+  const P = __PAYLOAD__;
+  const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  async function unlock(pw) {
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveBits"]);
+    const raw = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: b64(P.salt), iterations: P.iter }, base, 256);
+    const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(P.iv) }, key, b64(P.data));
+    return new TextDecoder().decode(plain);
+  }
+  // Insert the app, then re-create its scripts so the browser runs them.
+  function mount(html) {
+    document.getElementById("gate").remove();
+    const app = document.getElementById("app");
+    app.innerHTML = html;
+    app.querySelectorAll("script").forEach(old => {
+      const s = document.createElement("script");
+      s.textContent = old.textContent;
+      old.replaceWith(s);
+    });
+  }
+  const pw = document.getElementById("gatePw"), go = document.getElementById("gateGo"), err = document.getElementById("gateErr");
+  document.getElementById("gateShow").addEventListener("click", e => {
+    const hidden = pw.type === "password";
+    pw.type = hidden ? "text" : "password";
+    e.target.textContent = hidden ? "Hide" : "Show";
+  });
+  document.getElementById("gateForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    err.hidden = true; go.disabled = true; go.textContent = "Unlocking…";
+    let html;
+    try { html = await unlock(pw.value); }
+    catch (_) { err.hidden = false; go.disabled = false; go.textContent = "Unlock"; pw.select(); return; }
+    mount(html);
+  });
+  pw.focus();
+})();
+</script>
